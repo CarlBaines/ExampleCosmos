@@ -24,4 +24,20 @@ npm run build
 
 `npm test` is an informative placeholder that exits with code 1. There is no supplied automated test suite; compilation does not verify behaviour. `npm run watch` recompiles on changes, and `npm run clean` removes generated `dist/` files.
 
-At this checkpoint the Functions scaffold has no registered application endpoint. A host reporting no functions is not a successful API demonstration.
+The Functions project began as a scaffold; the current checkpoint adds local domain capabilities but has no registered application endpoint yet.
+
+## Domain factory and student exercise
+
+[product.ts](src/domain/product.ts) defines `Product`, `createProduct` and `ProductError`. TypeScript checks shape at compile time; calling `createProduct` performs runtime validation. The factory requires non-blank ID, name and description, non-negative integer `pricePence`, and a valid `Date` for `updatedAt`. Money is represented as integer pence.
+
+```sh
+npm run demo:domain
+```
+
+[The domain demo](scripts/demo-domain.ts) builds first, then creates and displays a Product whose name is 101 ASCII characters long. That succeeds in the supplied starting state: the maximum-length rule is deliberately absent. This is a console demonstration, not an assertion-based test.
+
+The worksheet exercise adds a maximum name length of 100, measured using the supplied string's JavaScript `.length`. Preserve the existing blank-name checks without adding trimming or normalisation. ASCII names of 99 and 100 characters must succeed; 101 must raise `ProductError` with `field === 'name'`. After that change, the same demo catches and displays the name error instead of a Product. Use the exercise requirements to check the boundary cases; this demo alone does not test all three.
+
+In `scripts/demo-domain.ts`, change the name expression to `'A'.repeat(99)`, save and run `npm run demo:domain`. Repeat with 100 and 101. The command rebuilds each time. Expect Product creation for 99 and 100, and `ProductError (field: name)` for 101 after implementing the rule. Temporarily try `name: '   '` to confirm blank-name rejection, then restore the 101-character example. Inspect the displayed result: the demo catches name errors, so exit status alone does not prove correctness. Rejecting all three lengths is incorrect.
+
+No solution is supplied here. The direct domain demo needs no Azure account or credentials.
