@@ -54,3 +54,9 @@ No solution is supplied here. The direct domain demo needs no Azure account or c
 | `delete(id)` | Complete without a value; an absent item is a no-op |
 
 Storage, network and authentication failures reject promises. The domain port contains no Azure SDK or HTTP types. These operations do not provide reservation concurrency protection.
+
+## In-memory adapter
+
+[FakeProductRepo](src/infra/fake-product-repo.ts) implements the port using a process-local `Map`. Supply valid Products constructed through the factory. The adapter copies both Product fields and the mutable `updatedAt` date on input and output, so changing an external object or date cannot change its stored copy.
+
+This is temporary in-memory data: it disappears when the process ends. It is useful for tracing the port without a database, but does not demonstrate durable persistence or concurrency between processes. This checkpoint is for source inspection; it supplies no standalone fake-repository command yet.
