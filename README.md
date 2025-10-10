@@ -41,3 +41,16 @@ The worksheet exercise adds a maximum name length of 100, measured using the sup
 In `scripts/demo-domain.ts`, change the name expression to `'A'.repeat(99)`, save and run `npm run demo:domain`. Repeat with 100 and 101. The command rebuilds each time. Expect Product creation for 99 and 100, and `ProductError (field: name)` for 101 after implementing the rule. Temporarily try `name: '   '` to confirm blank-name rejection, then restore the 101-character example. Inspect the displayed result: the demo catches name errors, so exit status alone does not prove correctness. Rejecting all three lengths is incorrect.
 
 No solution is supplied here. The direct domain demo needs no Azure account or credentials.
+
+## Repository port
+
+[ProductRepo](src/domain/product-repo.ts) describes the storage contract used by this example. Defining this interface does not provide storage.
+
+| Operation | Asynchronous result and meaning |
+| --- | --- |
+| `getById(id)` | `Product` or `null` when absent |
+| `list()` | `Product[]`, including an empty array when there are no products |
+| `save(product)` | Upsert by ID: create or replace, then return the saved Product |
+| `delete(id)` | Complete without a value; an absent item is a no-op |
+
+Storage, network and authentication failures reject promises. The domain port contains no Azure SDK or HTTP types. These operations do not provide reservation concurrency protection.
