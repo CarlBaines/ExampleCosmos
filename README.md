@@ -59,4 +59,14 @@ Storage, network and authentication failures reject promises. The domain port co
 
 [FakeProductRepo](src/infra/fake-product-repo.ts) implements the port using a process-local `Map`. Supply valid Products constructed through the factory. The adapter copies both Product fields and the mutable `updatedAt` date on input and output, so changing an external object or date cannot change its stored copy.
 
-This is temporary in-memory data: it disappears when the process ends. It is useful for tracing the port without a database, but does not demonstrate durable persistence or concurrency between processes. This checkpoint is for source inspection; it supplies no standalone fake-repository command yet.
+This is temporary in-memory data: it disappears when the process ends. It is useful for tracing the port without a database, but does not demonstrate durable persistence or concurrency between processes. Use the fake-backed list demo below to run the adapter through the application use case.
+
+## List use case without Azure
+
+```sh
+npm run demo:list -- fake
+```
+
+[The list demo](scripts/demo-list.ts) constructs a deterministic sample Product through `createProduct`, puts it in `FakeProductRepo` and calls [listProducts](src/app/list-products.ts) with `{ productRepo }`. It prints `Adapter: FakeProductRepo` followed by JSON with `success: true` and a `data` array containing `demo-product-1`. The sample date is fixed at `2026-01-01T00:00:00.000Z`.
+
+This command needs neither Azure credentials nor cloud resources. The use case depends on the repository port, not an adapter. Its result distinguishes `{ success: true, data }` from `{ success: false, error }`, and handles thrown values that are not `Error` objects. No failure-injection command is supplied.

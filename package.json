@@ -10,7 +10,8 @@
     "prestart": "npm run clean && npm run build",
     "start": "func start",
     "test": "echo \"No automated tests configured yet\" && exit 1",
-    "demo:domain": "npm run build && node dist/scripts/demo-domain.js"
+    "demo:domain": "npm run build && node dist/scripts/demo-domain.js",
+    "demo:list": "npm run build && node dist/scripts/demo-list.js"
   },
   "dependencies": {
     "@azure/functions": "~4.16.5"
