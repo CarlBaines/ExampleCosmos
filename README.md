@@ -1,10 +1,12 @@
 # Week 4: Product persistence example
 
-A small TypeScript Azure Functions example for CIS3039 Cloud Native DevOps. It develops Product domain validation, a repository port and interchangeable persistence adapters.
+A small TypeScript Azure Functions example for CIS3039 Cloud Native DevOps: validate Products, substitute fake/Cosmos repositories through one use case, seed persistent data and serve an anonymous GET endpoint.
 
 ## Development environment
 
 Clone this repository, open its folder in VS Code and choose **Dev Containers: Reopen in Container**. Install the VS Code Dev Containers extension on the host if needed; a working container runtime is required. Run the commands below in the container terminal, from the repository root.
+
+Students work with the latest `main` snapshot in their own working copy. The curated GitHub history is for brief browser-based inspection of the architectural progression; do not check out, run or edit historical commits for the Week 4 worksheet. Preserve your edits when comparing with current main. If you need a clean recovery copy, clone into a separate directory rather than resetting your work.
 
 [The devcontainer configuration](.devcontainer/devcontainer.json) uses `ghcr.io/tpdavison/devops-labs:latest`. This is a floating image tag, so rebuilding later may change the installed tools. It is not a pinned or reproducible image reference.
 
@@ -24,7 +26,18 @@ npm run build
 
 `npm test` is an informative placeholder that exits with code 1. There is no supplied automated test suite; compilation does not verify behaviour. `npm run watch` recompiles on changes, and `npm run clean` removes generated `dist/` files.
 
-The Functions project began as a scaffold; the current checkpoint adds local domain capabilities but has no registered application endpoint yet.
+The completed example includes local domain/fake demos and a real Cosmos-backed HTTP endpoint. Start with the cloud-free commands below before configuring Azure.
+
+## Start locally without Azure
+
+After restoring dependencies, run:
+
+```sh
+npm run demo:domain
+npm run demo:list -- fake
+```
+
+The first command illustrates the student validation exercise; the second lists deterministic in-memory data through the application use case. Neither needs Azure credentials. For persisted data and HTTP, continue with cloud setup, seeding and the host instructions below.
 
 ## Domain factory and student exercise
 
@@ -186,3 +199,130 @@ Expect progress for `widget-001`, `widget-002` and `widget-003`, followed by `Co
 Reruns replace those three sample IDs while retaining unrelated records. Writes are sequential and not transactional: earlier writes may remain if a later one fails. Configuration or write failure exits non-zero; the completion message appears only after all writes succeed. There is no wipe/reset operation or interactive confirmation.
 
 The seed path and Cosmos read mapper both invoke the factory. Ordinary seeding or listing does not exercise the name-length boundary; use `demo:domain` for that exercise.
+
+## Run the HTTP endpoint
+
+After provisioning, configuration and seeding, use the terminal where `COSMOS_KEY` is exported:
+
+```sh
+npm start
+```
+
+The command cleans and builds, then runs Core Tools with `--typescript`. Expect discovery of `listProductsHttp: [GET] http://localhost:7071/api/products`. This is the real Cosmos route; it has no fake-mode switch. In another terminal:
+
+```sh
+curl -i http://localhost:7071/api/products
+```
+
+A successful response is HTTP 200 with a **Product array**, not the demo's `{ success, data }` wrapper. Prices remain integer pence and `updatedAt` is an ISO string. An empty container gives `[]`; ordering is not promised. For example, an array item has this shape:
+
+```json
+{
+  "id": "widget-001",
+  "name": "Widget Deluxe",
+  "pricePence": 2999,
+  "description": "Our flagship widget with polished edges and premium finish.",
+  "updatedAt": "2024-01-05T12:00:00.000Z"
+}
+```
+
+Internal failures return HTTP 500 with this stable public body:
+
+```json
+{"success": false, "message": "Failed to list products"}
+```
+
+[The handler](src/functions/list-products-http.ts) covers dependency construction, use-case execution and date mapping. `InvocationContext` writes the failure stage and, for thrown failures, an error category to the host terminal. It does not expose raw SDK messages in HTTP responses. Use `npm start -- --verbose` for additional host detail; stop with Ctrl+C. GET is anonymous deliberately for this small teaching read endpoint.
+
+### Local settings and shell scope
+
+The supported route above exports the key in the shell so seed, demo and host inherit the same value. Standalone Node scripts do not load Functions settings files automatically.
+
+`local.settings.json` is Git-ignored because it may contain secrets. If it does not exist, Core Tools can create it when the TypeScript worker is selected. A minimal non-secret file can also be created manually as follows; preserve any existing settings rather than overwriting them:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": { "FUNCTIONS_WORKER_RUNTIME": "node" }
+}
+```
+
+No settings template or debugger task is supplied. A `COSMOS_KEY` placed in that file's `Values` is loaded by the Functions host only, not by the seed/demo processes. To avoid divergent targets or credentials, use the shell route and do not also store a conflicting key there. Restart the host after changing its environment.
+
+The tested HTTP-only host discovered and handled requests despite an `AzureWebJobsStorage` health warning. This does not verify storage-dependent triggers. If storage is required, follow Microsoft's [local development guidance](https://learn.microsoft.com/en-us/azure/azure-functions/functions-develop-local) for a running Azurite instance and `AzureWebJobsStorage`; do not use a Cosmos key as a storage connection string.
+
+## Commands and expected results
+
+| Command | Expected result | Azure required? |
+| --- | --- | --- |
+| `npm ci` | Restore locked dependencies | No; package download access needed |
+| `npm run build` | Strict compilation into `dist/` | No |
+| `npm run demo:domain` | 101-character Product before the exercise; name `ProductError` afterwards | No |
+| `npm run demo:list -- fake` | Fake label and deterministic success JSON | No |
+| `npm run demo:list -- cosmos` | Cosmos label and success JSON, or non-zero failure | Configured account/container and key |
+| `npm run seed` | Safe target summary, three upserts, completion | Configured writable target and key |
+| `npm start` | Local Functions host and GET route | Real target/key for successful requests |
+| `npm test` | Placeholder message and exit code 1 | No; not a test suite |
+
+## Code map
+
+| File or folder | Role |
+| --- | --- |
+| [src/domain/product.ts](src/domain/product.ts) | Product shape, factory and validation errors |
+| [src/domain/product-repo.ts](src/domain/product-repo.ts) | Asynchronous storage port |
+| [src/app/list-products.ts](src/app/list-products.ts) | Use case receiving a typed dependencies object |
+| [src/infra/fake-product-repo.ts](src/infra/fake-product-repo.ts) | Isolated process-local copies |
+| [src/infra/cosmos-product-repo.ts](src/infra/cosmos-product-repo.ts) | Cosmos SDK mechanics and domain/DTO mapping |
+| [src/config/composition-root.ts](src/config/composition-root.ts) | Target constants, required key and lazy dependency assembly |
+| [src/functions/list-products-http.ts](src/functions/list-products-http.ts) | Functions v4 registration, transport mapping and safe error boundary |
+| [scripts/demo-domain.ts](scripts/demo-domain.ts), [scripts/demo-list.ts](scripts/demo-list.ts) | Domain and adapter-substitution demonstrations |
+| [scripts/test-products.ts](scripts/test-products.ts), [scripts/seed-product-repo.ts](scripts/seed-product-repo.ts) | Validated deterministic fixtures and sequential seeding |
+
+Application source depends on the domain port; infrastructure implements it. The composition root selects the concrete adapter. At runtime the use case calls the injected adapter through the port. Factory construction is used for demo/seed inputs and Cosmos read mapping; cloning existing fake Products does not repeat validation. Structural typing alone never invokes the factory, and mutable Products can still be changed after construction.
+
+## Teaching scope and limitations
+
+This is a small persistence and dependency-injection example: an anonymous GET, whole-list reads and unconditional upserts. It does not supply a write API, authentication, managed identity, reservation concurrency, events, deployment automation or automated test coverage. `/id` is this example's partition design, not a universal recommendation. Factory validation on reads means an invalid stored record can fail the list rather than be silently skipped.
+
+For independent work, follow the supplied Week 1 scaffolding guidance or adapt this example. Tooling does not create the architectural layers for you. The Campus Device Loan assessment needs scenario-specific decisions about domain rules, routes, DTOs, data ownership, partitioning, reservation concurrency and security. Using this pattern alone does not demonstrate or satisfy those requirements. Use the course-provided Week 4 worksheet for the investigation and exercise; no public worksheet URL is supplied here.
+
+Retain the dedicated Week 4 demonstration resources between the two lab sessions while the required cloud checks are still needed. After both labs and those checks are complete, preserve your code and notes and delete the disposable demonstration resources. The optional `AGENTS.md` activity does not require retaining Azure resources. Assessment and unrelated resources must remain untouched. Stopping the local Functions host does not delete cloud resources or end retained-storage charges.
+
+Restore `RESOURCE_GROUP` from your recorded Week 4 group name if necessary. Check the current subscription, the group identity and every resource in it:
+
+```sh
+az account show --query '{name:name,id:id}' --output table
+az group show --name "$RESOURCE_GROUP" --query '{name:name,id:id,location:location}' --output table
+az resource list --resource-group "$RESOURCE_GROUP" --query '[].{name:name,type:type}' --output table
+```
+
+**Warning: deletion permanently removes the group's resources and demonstration data. Continue only if this is your dedicated disposable Week 4 group and contains no assessment, shared or unrelated resources. If anything else is present, do not delete the group. Ask the tutor to help select only the disposable resources in the portal.**
+
+For the verified dedicated group, run the following command and read its confirmation prompt before accepting. Do not skip confirmation.
+
+```sh
+az group delete --name "$RESOURCE_GROUP"
+```
+
+Once deletion finishes, verify removal:
+
+```sh
+az group exists --name "$RESOURCE_GROUP"
+```
+
+Expect `false`. If the group still exists, check deletion status and resolve the failure. If individual resources were deleted instead, refresh the portal and verify that those exact demonstration resources are gone while unrelated resources remain. Keep local/GitHub code and notes. Do not make another cloud request as a completion check after deletion. Future cloud work needs a recreated/configured target and a fresh key export.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `npm ci` fails | Record Node/npm versions and exact error; use the tested npm 10 baseline and retain the lockfile. Other npm versions are unverified. |
+| No functions discovered | In the current main snapshot, run the build and compare `dist/src/functions/*.js` with `package.json`'s `main`. Confirm that `src/functions/list-products-http.ts` is present. Earlier historical states intentionally have no endpoint; inspect them only in the browser and keep the latest snapshot as your working version. |
+| Missing `COSMOS_KEY` | Export it in this terminal and restart the process. A standalone script does not read `local.settings.json`. |
+| Key rejected or request forbidden | Check account/key alignment, key authentication policy and account network access. Inspect safe diagnostics; never print keys or dump client options. |
+| Wrong data or missing database/container | Compare the code constants, seed target summary and provisioned names. The shell's name variables do not override code constants. |
+| List works but point read/delete fails | Check `/id` and the point operation's matching partition value; listing alone does not verify point operations. |
+| Seed stops part way | Earlier writes may remain. Resolve the cause and rerun against the same intended target; do not wipe unrelated data. |
+| Generic HTTP 500 | Read the invocation's stage/category in the host terminal. Check configuration and stored domain/date values. Detailed internal messages are deliberately absent from the response. |
+| Storage health warning | The HTTP route was observed to work, but storage-trigger readiness is unverified. Configure local storage separately if needed. |
+| Region/policy provisioning failure | Review the selected subscription, allowed locations, provider registration and serverless availability; ask the tutor rather than bypassing policy. |
