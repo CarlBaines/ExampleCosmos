@@ -169,3 +169,20 @@ npm run demo:list -- cosmos
 ```
 
 Expect `Adapter: CosmosProductRepo`, then a success result with a `data` array; a new empty container yields `[]`. Missing/blank keys fail explicitly, and configuration or repository failures exit non-zero. Invalid modes print usage and fail. The fake command remains available without Azure configuration and does not load Cosmos composition. Both modes invoke the same use case, but cloud data may differ or contain additional records; do not assume identical ordering or contents.
+
+## Seed deterministic sample data
+
+With the target constants and same-terminal key configured, run:
+
+```sh
+npm run seed
+npm run demo:list -- cosmos
+```
+
+[The seed runner](scripts/seed-product-repo.ts) builds first, prints only the account endpoint/database/container as its target summary, and sequentially upserts the Products from [test-products.ts](scripts/test-products.ts). The fixtures call `createProduct`, so domain validation runs before seeding. The supplied names remain valid after the student adds the 100-character limit.
+
+Expect progress for `widget-001`, `widget-002` and `widget-003`, followed by `Completed seeding products.` Inspect those IDs in Azure portal **Data Explorer**, under your database/container's **Items**, and compare them with the Cosmos demo output. Run the demo again in a fresh process to observe persisted data.
+
+Reruns replace those three sample IDs while retaining unrelated records. Writes are sequential and not transactional: earlier writes may remain if a later one fails. Configuration or write failure exits non-zero; the completion message appears only after all writes succeed. There is no wipe/reset operation or interactive confirmation.
+
+The seed path and Cosmos read mapper both invoke the factory. Ordinary seeding or listing does not exercise the name-length boundary; use `demo:domain` for that exercise.

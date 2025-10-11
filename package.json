@@ -11,7 +11,8 @@
     "start": "func start",
     "test": "echo \"No automated tests configured yet\" && exit 1",
     "demo:domain": "npm run build && node dist/scripts/demo-domain.js",
-    "demo:list": "npm run build && node dist/scripts/demo-list.js"
+    "demo:list": "npm run build && node dist/scripts/demo-list.js",
+    "seed": "npm run build && node dist/scripts/seed-product-repo.js"
   },
   "dependencies": {
     "@azure/cosmos": "~4.10.1",

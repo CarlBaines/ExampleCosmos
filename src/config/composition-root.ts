@@ -12,6 +12,13 @@ const COSMOS_OPTIONS = {
   containerId: 'products',
 };
 
+// Return only non-secret target values for command-line summaries.
+export const getCosmosTarget = () => ({
+  endpoint: COSMOS_OPTIONS.endpoint,
+  databaseId: COSMOS_OPTIONS.databaseId,
+  containerId: COSMOS_OPTIONS.containerId,
+});
+
 let cachedProductRepo: ProductRepo | null = null;
 
 export const getProductRepo = (): ProductRepo => {
