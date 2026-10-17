@@ -20,7 +20,7 @@ npm ci
 npm run build
 ```
 
-`npm ci` restores [the lockfile](package-lock.json); a successful build exits without compiler errors. Keep the lockfile intact if restoration fails and report the Node/npm versions and error. Do not substitute an unlocked installation as proof that the documented restore works.
+`npm ci` restores [the lockfile](package-lock.json); a successful build exits without compiler errors. Historical scaffold note: before the domain files were added, the setup checkpoint had no TypeScript inputs, so its build reports TS18003 (no inputs). That checkpoint is for setup/inspection; the domain checkpoint supplies the first compilable source. Keep the lockfile intact if restoration fails and report the Node/npm versions and error. Do not substitute an unlocked installation as proof that the documented restore works.
 
 `npm test` is an informative placeholder that exits with code 1. There is no supplied automated test suite; compilation does not verify behaviour. `npm run watch` recompiles on changes, and `npm run clean` removes generated `dist/` files.
 
@@ -79,4 +79,93 @@ The storage DTO uses an ISO string for `updatedAt`; the domain uses `Date`. Docu
 
 This example uses partition key **`/id`**. Point reads and deletes therefore pass both the item ID and the matching partition value with `item(id, id)`. Other partition designs require their actual partition value. Missing items become `null` on read or a no-op on delete; other failures reject. Listing uses `readAll().fetchAll()`, loading the full result into memory for a small dataset.
 
-This checkpoint adds the adapter only; the composition and runnable Cosmos demo arrive at the next stage.
+The composition root and Cosmos demo below wire this adapter into the same use case as the fake.
+
+## Cloud setup and Cosmos demo
+
+[composition-root.ts](src/config/composition-root.ts) connects the concrete Cosmos repository to the use case. It lazily creates and reuses a repository, validates `COSMOS_KEY` when construction is requested, and supplies the use-case dependencies. Caching reuses connections; it does not make business data durable by itself.
+
+For Week 4, the account endpoint, database and container stay as explicit non-secret constants in that file; only the key comes from the environment. Replace the demonstration target with your own provisioned target. Moving all settings into environment configuration is a later teaching step.
+
+### Select an account, subscription and permitted region
+
+Azure CLI **2.91.0** was inspected; its core commands below work without a Cosmos CLI extension installed. Check the commands in your environment before provisioning. Auth0 CLI **1.37.0** is present in the recorded image baseline but is not used by this example.
+
+```sh
+az version
+az cosmosdb create --help
+az cosmosdb sql database create --help
+az cosmosdb sql container create --help
+az login
+az account list --query "[].{name:name,id:id,isDefault:isDefault}" --output table
+SUBSCRIPTION_ID='<your-subscription-id>'
+az account set --subscription "$SUBSCRIPTION_ID"
+az account show --query '{name:name,id:id}' --output table
+az account list-locations --query '[].{name:name,displayName:displayName}' --output table
+az provider show --namespace Microsoft.DocumentDB \
+  --query '{registrationState:registrationState,regions:resourceTypes[?resourceType==`databaseAccounts`].locations}' --output json
+az policy assignment list --scope "/subscriptions/$SUBSCRIPTION_ID" \
+  --disable-scope-strict-match true --output json
+```
+
+Review allowed-location policy parameters and definitions, including inherited policies or initiatives, with your tutor if necessary. A region appearing in `list-locations` is not proof that your subscription permits Cosmos there. The provider must be registered; ask the subscription administrator if registration or policy inspection is unavailable. See the [account CLI reference](https://learn.microsoft.com/en-us/cli/azure/account?view=azure-cli-latest) and [policy assignment reference](https://learn.microsoft.com/en-us/cli/azure/policy/assignment?view=azure-cli-latest).
+
+The commands below choose **UK South (`uksouth`)**, subject to those checks. If it is not permitted or serverless is unavailable, agree a supported region before proceeding and use it consistently. This README does not establish your subscription's entitlement or capacity.
+
+### Provision or reuse the demonstration target
+
+For the Week 4 labs, use a dedicated disposable demonstration resource group containing only your own Week 4 resources. You may reuse your own existing Week 4 demonstration target after verifying its configuration. Do not use an assessment target or a shared resource group. Follow the course naming convention `project-env-uid-type`. Replace `YOUR_UID` below with a short identifier made from lowercase letters and digits. The full Cosmos account name must be globally unique and contain 3–44 lowercase letters, digits or hyphens. Use the permitted region established in the preceding checks consistently.
+
+```sh
+RESOURCE_GROUP='week4-lab-YOUR_UID-rg'
+COSMOS_ACCOUNT='week4-lab-YOUR_UID-cosmos'
+REGION='uksouth'
+DATABASE_ID='catalogue-db'
+CONTAINER_ID='products'
+```
+
+These are resource-creating commands and incur charges. Serverless bills consumed request units and retained storage; keeping data is not free merely because the application is idle. Do not specify provisioned throughput for this serverless route. Microsoft's [serverless CLI sample](https://github.com/Azure-Samples/azure-cli-samples/blob/master/cosmosdb/sql/serverless.sh) and [serverless overview](https://learn.microsoft.com/en-us/azure/cosmos-db/serverless) explain the capability and charging model. The CLI retains `sql` in command names for the API now called NoSQL.
+
+```sh
+az group create --name "$RESOURCE_GROUP" --location "$REGION" --output none
+az cosmosdb create --resource-group "$RESOURCE_GROUP" --name "$COSMOS_ACCOUNT" \
+  --kind GlobalDocumentDB --locations regionName="$REGION" failoverPriority=0 isZoneRedundant=False \
+  --capabilities EnableServerless --default-consistency-level Session --output none
+az cosmosdb sql database create --resource-group "$RESOURCE_GROUP" \
+  --account-name "$COSMOS_ACCOUNT" --name "$DATABASE_ID" --output none
+az cosmosdb sql container create --resource-group "$RESOURCE_GROUP" \
+  --account-name "$COSMOS_ACCOUNT" --database-name "$DATABASE_ID" \
+  --name "$CONTAINER_ID" --partition-key-path '/id' --output none
+```
+
+Check the account's capability, key-auth policy and location, plus the container partition path:
+
+```sh
+az cosmosdb show --resource-group "$RESOURCE_GROUP" --name "$COSMOS_ACCOUNT" \
+  --query '{endpoint:documentEndpoint,capabilities:capabilities[].name,locations:locations[].locationName,keyAuthDisabled:disableLocalAuth}' --output json
+az cosmosdb sql container show --resource-group "$RESOURCE_GROUP" \
+  --account-name "$COSMOS_ACCOUNT" --database-name "$DATABASE_ID" \
+  --name "$CONTAINER_ID" --query '{id:resource.id,partitionKey:resource.partitionKey.paths}' --output json
+```
+
+Confirm `EnableServerless`, your chosen location, key authentication not disabled, and `/id`. Stop and resolve a mismatch rather than attempting a destructive reset. An existing provisioned-throughput account is not made serverless by creating a container. See the [account CLI reference](https://learn.microsoft.com/en-us/cli/azure/cosmosdb?view=azure-cli-latest) and [container reference](https://learn.microsoft.com/en-us/cli/azure/cosmosdb/sql/container?view=azure-cli-latest).
+
+### Configure the code and export the key
+
+Copy the inspected account endpoint into `COSMOS_OPTIONS.endpoint` in [composition-root.ts](src/config/composition-root.ts), and set `databaseId` and `containerId` to match the variables above. Shell variables for these names do not configure the application: the application reads the constants.
+
+In the same terminal you will use for the application commands, retrieve and export the key without displaying it:
+
+```sh
+COSMOS_KEY="$(az cosmosdb keys list --resource-group "$RESOURCE_GROUP" \
+  --name "$COSMOS_ACCOUNT" --type keys --query primaryMasterKey --output tsv)"
+export COSMOS_KEY
+```
+
+Do not print the key, enable shell tracing during retrieval, or put it in source or Git. Your signed-in Azure identity needs permission to retrieve account keys. Keep shell variables aligned with the account in the code. Repeat the export after opening a new terminal or reopening the container; a host already running must be restarted to inherit changes.
+
+```sh
+npm run demo:list -- cosmos
+```
+
+Expect `Adapter: CosmosProductRepo`, then a success result with a `data` array; a new empty container yields `[]`. Missing/blank keys fail explicitly, and configuration or repository failures exit non-zero. Invalid modes print usage and fail. The fake command remains available without Azure configuration and does not load Cosmos composition. Both modes invoke the same use case, but cloud data may differ or contain additional records; do not assume identical ordering or contents.
