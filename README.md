@@ -70,3 +70,13 @@ npm run demo:list -- fake
 [The list demo](scripts/demo-list.ts) constructs a deterministic sample Product through `createProduct`, puts it in `FakeProductRepo` and calls [listProducts](src/app/list-products.ts) with `{ productRepo }`. It prints `Adapter: FakeProductRepo` followed by JSON with `success: true` and a `data` array containing `demo-product-1`. The sample date is fixed at `2026-01-01T00:00:00.000Z`.
 
 This command needs neither Azure credentials nor cloud resources. The use case depends on the repository port, not an adapter. Its result distinguishes `{ success: true, data }` from `{ success: false, error }`, and handles thrown values that are not `Error` objects. No failure-injection command is supplied.
+
+## Cosmos adapter
+
+[CosmosProductRepo](src/infra/cosmos-product-repo.ts) is the second port implementation. Its required options are `endpoint`, `databaseId`, `containerId` and `key`, each a non-blank string. It constructs its own Cosmos client and supports account-key authentication.
+
+The storage DTO uses an ISO string for `updatedAt`; the domain uses `Date`. Document-to-domain mapping calls `createProduct`, so stored records must satisfy the domain rules too. Invalid records can cause a read or list to fail. Whole-item upserts convert dates back to ISO strings.
+
+This example uses partition key **`/id`**. Point reads and deletes therefore pass both the item ID and the matching partition value with `item(id, id)`. Other partition designs require their actual partition value. Missing items become `null` on read or a no-op on delete; other failures reject. Listing uses `readAll().fetchAll()`, loading the full result into memory for a small dataset.
+
+This checkpoint adds the adapter only; the composition and runnable Cosmos demo arrive at the next stage.
